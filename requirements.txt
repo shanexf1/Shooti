@@ -1,0 +1,5 @@
+streamlit>=1.40
+opencv-python>=4.10
+numpy>=2.0
+pillow>=10.4
+anthropic>=1.0

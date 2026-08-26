@@ -1,0 +1,11 @@
+.venv/
+out/
+models/
+__pycache__/
+*.py[cod]
+.env
+.streamlit/secrets.toml
+.DS_Store
+samples/*.jpg
+samples/*.png
+!samples/.gitkeep
