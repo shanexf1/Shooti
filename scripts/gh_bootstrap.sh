@@ -219,4 +219,5 @@ new_issue "Verify setup on a clean machine" \
 downloads, the smoke test passes, the app boots, and the no-API-key path is
 genuinely usable. Fix whatever the README leaves out.'
 
-say "Done. Board: $("$GH" repo view --json url --jq .url "${REPO_ARGS[@]}" 2>/dev/null)/issues"
+# `gh repo view` takes the repo as a positional argument, not --repo.
+say "Done. Board: $("$GH" repo view ${REPO:+"$REPO"} --json url --jq .url 2>/dev/null)/issues"
