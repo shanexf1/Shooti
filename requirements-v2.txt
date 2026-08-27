@@ -1,0 +1,13 @@
+# v2 (learned grader) — installs on top of requirements.txt.
+# Kept separate so v1 stays a light install; torch alone is ~1.4 GB.
+-r requirements.txt
+
+torch>=2.6
+torchvision>=0.21
+transformers>=4.45
+huggingface_hub>=0.26
+pyarrow>=17
+scipy>=1.14
+
+# Only needed if you re-fetch the dataset through the datasets library.
+datasets>=3.0

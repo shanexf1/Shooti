@@ -1,0 +1,46 @@
+{
+  "baseline_rules": {
+    "srcc": -0.00596547279535483,
+    "plcc": 0.008045706601226678,
+    "mse": 5.013692215446843,
+    "acc": 0.6587084148727984,
+    "emd": NaN,
+    "n": 5110
+  },
+  "premise_check": {
+    "thirds_dist_srcc": -0.024762638365223476,
+    "thirds_dist_p": 0.0767309212615562,
+    "center_dist_srcc": -0.01683259305005579,
+    "center_dist_p": 0.22895450473256926
+  },
+  "learned": {
+    "clip": {
+      "srcc": 0.6820443960129846,
+      "plcc": 0.689377177488327,
+      "mse": 0.29027617253866217,
+      "acc": 0.800587084148728,
+      "emd": 0.06634142994880676,
+      "n": 5110
+    },
+    "geo": {
+      "srcc": 0.16596458289122568,
+      "plcc": 0.1663550538777021,
+      "mse": 0.5375065303871572,
+      "acc": 0.7136986301369863,
+      "emd": 0.08783190697431564,
+      "n": 5110
+    },
+    "both": {
+      "srcc": 0.6723017828264561,
+      "plcc": 0.680424099122805,
+      "mse": 0.29759038711444724,
+      "acc": 0.8054794520547945,
+      "emd": 0.06707536429166794,
+      "n": 5110
+    }
+  },
+  "n_fit": 17371,
+  "n_selection": 3066,
+  "n": 5110,
+  "split_note": "Selection set carved from the train split; metrics above are on the dataset's validation split, which was used for neither fitting nor epoch selection. The dataset's own 'test' split is a duplicate of 'validation' and is therefore unused."
+}

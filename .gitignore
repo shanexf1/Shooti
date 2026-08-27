@@ -2,6 +2,12 @@
 out/
 models/
 __pycache__/
+
+# Feature caches: ~50 MB, rebuildable with shooti.grader.prepare.
+cache/
+# Trained checkpoints ARE committed (1.3 MB total) so the app runs without
+# a 15-minute preprocessing pass. Only stray experiments are ignored.
+checkpoints/*.tmp
 *.py[cod]
 .env
 .streamlit/secrets.toml
