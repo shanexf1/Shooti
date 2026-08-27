@@ -64,6 +64,8 @@ add_milestone "M3 Coaching quality" \
   "More composition patterns than thirds, and evidence that the Claude prompt actually helps."
 add_milestone "M4 Submission" \
   "Write-up, demo, and a setup path verified on a clean machine."
+add_milestone "M5 Learned grading (v2)" \
+  "The rule score turned out to carry no signal (SRCC -0.006 vs human ratings). Grading is now learned from human-rated photos; this milestone is what follows from that."
 
 # ---------------------------------------------------------------- issues
 say "Issues"
@@ -218,6 +220,66 @@ new_issue "Verify setup on a clean machine" \
 'Fresh venv, no cached model, no API key. Confirm: deps install, the ONNX model
 downloads, the smoke test passes, the app boots, and the no-API-key path is
 genuinely usable. Fix whatever the README leaves out.'
+
+# ---- M5 (v2: learned grading) ---------------------------------------------
+new_issue "Does the crop-search advice actually help people?" \
+  "M5 Learned grading (v2)" "area:eval,p0" \
+'The grader agrees with human ratings at SRCC 0.682, but that does NOT establish
+that its reframing suggestions improve real photos. Those are different claims
+and only the first has evidence.
+
+Test the second directly: take ~30 photos, apply the top suggestion to each,
+then have several people blind-compare original vs. suggested crop. Report the
+win rate with a confidence interval. If it is near 50%, the advice mechanism does
+not work regardless of how good the grader is — and that needs saying.'
+
+new_issue "Push grading accuracy past SRCC 0.68" \
+  "M5 Learned grading (v2)" "area:llm,p1" \
+'Current setup is a frozen CLIP ViT-B/32 plus a 153k-parameter head. Things worth
+trying, cheapest first:
+
+- A larger frozen backbone (ViT-L/14, SigLIP) — likely the best gain per hour.
+- Unfreeze the last few transformer blocks at a low LR. Watch for overfitting;
+  20k images is not much.
+- Train on the full AVA set rather than this 10% subset.
+- Ensemble over several seeds.
+
+Report each against the same held-out 5,110 photos so the numbers stay
+comparable, and keep the frozen baseline in the table.'
+
+new_issue "Train per-attribute heads on AADB for explanations" \
+  "M5 Learned grading (v2)" "area:llm,p1" \
+'The grader outputs a number; it cannot say why. AADB (~10k photos) carries
+per-attribute human labels including rule_of_thirds, symmetry,
+balancing_elements, and object_emphasis.
+
+Training heads on those turns explanations into predictions rather than
+assertions: "this reads as strongly symmetric, which is why the off-center
+subject is not hurting it." It also lets us check something interesting — does a
+human-labeled rule_of_thirds score predict quality even though our *geometric*
+thirds distance does not? Those could easily differ, and the answer matters.
+
+Dataset: Iceclear/AADB on Hugging Face (2.5 GB, ungated).'
+
+new_issue "Learn the individual photographer's taste" \
+  "M5 Learned grading (v2)" "area:llm,p2" \
+'AVA is DPChallenge circa 2005 and its taste is inherited wholesale by the
+grader. A user who shoots documentary work will disagree with it constantly.
+
+Add a lightweight personalization pass: let the user rate or pairwise-compare 20
+of their own photos, then fit a small adapter (or just a re-weighting of the head)
+on top of the frozen embeddings. Report whether personalized agreement beats the
+generic model on held-out photos from that same user.'
+
+new_issue "Decide whether v1 rules stay in the product" \
+  "M5 Learned grading (v2)" "area:ui,p1" \
+'v1 is still shipped in app.py and shown in app2.py as a comparison panel. Given
+its score carries no signal (SRCC -0.006), keeping it as advice is indefensible.
+
+Options: keep it purely as a teaching exhibit (current state, clearly labeled);
+strip the score but keep the individual measurements, which ARE useful as
+overlays and features; or remove it. Whatever is chosen, app.py should not
+present a meaningless number as guidance without saying so.'
 
 # `gh repo view` takes the repo as a positional argument, not --repo.
 say "Done. Board: $("$GH" repo view ${REPO:+"$REPO"} --json url --jq .url 2>/dev/null)/issues"
