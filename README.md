@@ -190,11 +190,36 @@ Two things were verified rather than assumed:
 measurably more responsive to framing changes (0.51 vs 0.44) — geometry gives the
 model an explicit handle on the thing the advice is about.
 
+## Both versions on the same photo
+
+![v2](docs/screenshot-v2.png)
+
+v2 predicts a 5.75/10 human rating, shows the full predicted vote distribution
+(so you can see how divisive a shot is, not just its average), and finds exactly
+one reframing worth making — a 7% downward tilt, worth +0.07.
+
+![v1](docs/screenshot-v1.png)
+
+v1 on the identical photo asserts "2 things to fix": the eye level is 12% off a
+thirds intersection, and there is 23% headroom. Neither claim is connected to
+whether anyone likes the photograph.
+
 ## Running v2
 
 ```bash
 .venv/bin/pip install -r requirements-v2.txt
 .venv/bin/python -m streamlit run app2.py
+```
+
+Both screenshots above were produced by `scripts/drive_app.py`, which launches
+the app in a real headless browser, uploads a photo through the actual file
+input, and screenshots the result — so "it works" means the UI rendered, not
+that a port opened:
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/playwright install chromium
+.venv/bin/python scripts/drive_app.py --app app2.py --photo samples/messi.jpg
 ```
 
 The trained checkpoints are committed (1.3 MB), so this works immediately. To

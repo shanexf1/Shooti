@@ -1,0 +1,5 @@
+# Dev tooling: drives the Streamlit apps in a real browser for verification.
+-r requirements-v2.txt
+
+playwright>=1.48
+# After installing, fetch the browser once:  playwright install chromium

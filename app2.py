@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import streamlit as st
 
 from shooti import analyze
@@ -122,10 +123,17 @@ with right:
         + (" — divisive, people would disagree about this one." if base_grade.divisive else "")
     )
 
+    # Bin index 0 is rating 1, so pass explicit x values — otherwise the axis
+    # reads 0-9 and mislabels every bar.
     st.bar_chart(
-        {"predicted votes": base_grade.distribution},
-        x_label="rating (1-10)",
-        y_label="share of voters",
+        pd.DataFrame(
+            {
+                "rating": np.arange(1, len(base_grade.distribution) + 1),
+                "share of voters": base_grade.distribution,
+            }
+        ),
+        x="rating",
+        y="share of voters",
     )
 
 st.divider()
@@ -138,12 +146,16 @@ if not suggestions:
         "about the subject not sitting on a thirds line."
     )
 else:
-    st.subheader(f"{len(suggestions)} reframing{'s' if len(suggestions) > 1 else ''} that score higher")
+    n = len(suggestions)
+    st.subheader(
+        f"{n} reframing that scores higher" if n == 1 else f"{n} reframings that score higher"
+    )
     st.caption(
         "Each was actually cropped and re-graded. The gain is the predicted rating "
         "difference, not a rule penalty."
     )
-    cols = st.columns(len(suggestions))
+    # Fixed column count so a single suggestion doesn't render full-width.
+    cols = st.columns(max(3, len(suggestions)))
     for col, sug in zip(cols, suggestions):
         with col:
             st.image(
