@@ -145,6 +145,11 @@ def coach(
                 }
             ],
         )
+    except TypeError as exc:
+        # The SDK raises a bare TypeError -- not AuthenticationError -- when no
+        # credential can be resolved, so this needs its own arm or the UI shows
+        # a raw "TypeError" to the user.
+        raise CoachError("No Anthropic credentials found. Set ANTHROPIC_API_KEY, paste a key in the sidebar, or run `ant auth login`.") from exc
     except anthropic.AuthenticationError as exc:
         raise CoachError(
             "Claude rejected the credentials. Set ANTHROPIC_API_KEY or run `ant auth login`."

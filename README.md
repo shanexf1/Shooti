@@ -276,3 +276,98 @@ checkpoints/report_test.json every number in the table above
 Work is tracked in GitHub Issues and milestones. `scripts/gh_bootstrap.sh`
 recreates the whole board from scratch, so the plan is version-controlled
 alongside the code.
+
+---
+
+# v3 — intent-conditioned rule sets
+
+You state what you're going for; Claude picks the rule set that fits. Nine rule
+sets, each switching different rules on and off:
+
+| Rule set | Switches off | Inverts |
+|---|---|---|
+| Portrait | — | — |
+| Group photo | thirds | centering is rewarded |
+| Symmetry / architecture | thirds, headroom, size, looking room | centering rewarded, balance strict |
+| Landscape | headroom, size, looking room | — |
+| Street / documentary | camera pitch | 6° tilt tolerance, clipped edges fine |
+| Action / sports | camera pitch | looking room weighted 2× |
+| Minimalist | headroom, looking room | a *small* subject is the goal |
+| Product / flat lay | thirds, headroom, looking room | centering rewarded |
+| No stated intent | — | v1's universal set, kept as the baseline |
+
+The point is the difference between **"not applicable"** and **"barely
+penalized"**. A symmetry rule set does not score thirds leniently — it declares
+thirds inapplicable and says so. On the test photo, v1 flags 2 problems and
+scores 84; the action rule set flags 1 and scores 97, because 23% headroom is
+normal in a sports frame.
+
+## Does conditioning actually make the rules predictive? No.
+
+The hypothesis was worth testing: maybe rules fail only because the *wrong* ones
+are applied. Measured on the 5,110 held-out AVA photos, with CLIP zero-shot
+standing in for stated intent:
+
+| Scorer | SRCC vs human ratings | p |
+|---|---|---|
+| Universal rules (v1) | −0.006 | 0.67 |
+| **Intent-conditioned rules (v3)** | **+0.007** | **0.62** |
+| Learned grader (v2) | **+0.682** | — |
+
+Conditioning moved correlation by +0.013 — still indistinguishable from zero.
+`action` reached p=0.036 on its own subset, but eight profiles were tested and
+one hit near p=0.05 is exactly what multiple comparisons produce by chance.
+
+**And this result is confounded, which matters more than the number.** Inspecting
+the assignments by eye (`out/assignment_check.png`) showed CLIP zero-shot is
+unreliable at guessing intent: "portrait" collected a pickup truck and a cat,
+"action" collected a stationary butterfly and a goose. Only "landscape" looked
+consistently right. So the experiment cannot separate *"conditioning doesn't
+help"* from *"the intent was inferred wrongly"*.
+
+What it does establish: **automatic intent inference plus these hand-tuned rule
+sets does not rescue rule-based scoring.** It is not a clean test of whether
+*user-stated* intent would, because AVA has no stated intent to test with.
+
+## So what is v3 actually for?
+
+Given the above, v3 does not use rule scores as a quality verdict. The split:
+
+- **Quality number** comes from the v2 learned grader (SRCC 0.682).
+- **Advice** comes from the intent-conditioned rules, which are interpretable and
+  now appropriate to the goal — a centered symmetry shot is praised for
+  centering rather than scolded for it.
+
+That is a smaller claim than "v3 grades better", and it is the one the evidence
+supports.
+
+## Running v3
+
+```bash
+.venv/bin/python -m streamlit run app3.py
+```
+
+Works with **no API key**: rule-set selection falls back to keyword matching and
+says so on screen. With a key (sidebar or `ANTHROPIC_API_KEY`), Claude reads the
+photo plus your free-form intent and picks — which handles descriptions keywords
+cannot, like "I want this to feel lonely".
+
+To reproduce the experiment:
+
+```bash
+python -m shooti.intent.experiment --split validation
+```
+
+## v3 limits
+
+- **The Claude selection path is unverified by me.** No API key was available at
+  any point in this project, so `select_claude` has never made a real call. Its
+  request shape is checked against the installed SDK and its failure paths are
+  tested, but the happy path is untested.
+- **Profile parameters are hand-set guesses**, not fitted. The tolerances come
+  from photographic convention, and the experiment above gives no evidence they
+  are right.
+- **Nine rule sets is a coarse taxonomy.** Real intent is continuous, and a photo
+  can be two things at once. Only one set is applied.
+- **Keyword fallback is not language understanding.** It matches a word list. "I
+  don't want a portrait" selects Portrait.

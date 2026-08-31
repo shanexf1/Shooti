@@ -1,0 +1,61 @@
+{
+  "n": 5110,
+  "universal_srcc": -0.00596547279535483,
+  "universal_p": 0.6698623741252246,
+  "conditioned_srcc": 0.006999264380077838,
+  "conditioned_p": 0.6169194845090014,
+  "per_profile": {
+    "portrait": {
+      "n": 608,
+      "srcc": 0.032420141188146935,
+      "p": 0.4248882523866151
+    },
+    "group": {
+      "n": 157,
+      "srcc": -0.05013487029236725,
+      "p": 0.5329162469906286
+    },
+    "symmetry": {
+      "n": 422,
+      "srcc": -0.0371093946823072,
+      "p": 0.44705995509743673
+    },
+    "landscape": {
+      "n": 486,
+      "srcc": 0.011210780614587499,
+      "p": 0.8052816139842415
+    },
+    "street": {
+      "n": 424,
+      "srcc": 0.0128946887219068,
+      "p": 0.7912058639162688
+    },
+    "action": {
+      "n": 635,
+      "srcc": 0.08327525359534317,
+      "p": 0.035906839601792605
+    },
+    "minimal": {
+      "n": 1261,
+      "srcc": 0.010630180926338925,
+      "p": 0.7060844362191631
+    },
+    "product": {
+      "n": 1117,
+      "srcc": 0.010855598860743745,
+      "p": 0.7170416345345924
+    }
+  },
+  "assignment_counts": {
+    "portrait": 608,
+    "group": 157,
+    "symmetry": 422,
+    "landscape": 486,
+    "street": 424,
+    "action": 635,
+    "minimal": 1261,
+    "product": 1117
+  },
+  "learned_grader_srcc": 0.6820443960129846,
+  "caveat": "AVA has no stated intent; CLIP zero-shot infers what the photo IS as a proxy for what the photographer WANTED. The app receives stated intent directly, so this is a lower bound."
+}

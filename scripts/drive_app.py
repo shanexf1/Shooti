@@ -19,7 +19,8 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def drive(app: str, photo: Path, port: int, out: Path, settle: int, height: int) -> int:
+def drive(app: str, photo: Path, port: int, out: Path, settle: int, height: int,
+          intent: str | None = None) -> int:
     proc = subprocess.Popen(
         [
             str(ROOT / ".venv/bin/python"), "-m", "streamlit", "run", app,
@@ -58,6 +59,19 @@ def drive(app: str, photo: Path, port: int, out: Path, settle: int, height: int)
                 print("note: no Upload radio found (v1 layout?)")
 
             page.wait_for_timeout(1500)
+
+            # v3 takes a stated intent; fill it before uploading so the first
+            # render already has it.
+            if intent:
+                area = page.query_selector("textarea")
+                if area:
+                    area.fill(intent)
+                    page.keyboard.press("Tab")  # commit the widget value
+                    page.wait_for_timeout(1200)
+                    print(f"intent typed: {intent!r}")
+                else:
+                    print("note: no textarea found for intent")
+
             page.set_input_files("input[type=file]", str(photo))
             print(f"uploaded {photo}")
 
@@ -115,9 +129,12 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--settle", type=int, default=12, help="seconds to wait for grading")
     ap.add_argument("--height", type=int, default=2600, help="viewport height")
+    ap.add_argument("--intent", default=None, help="v3: stated intent text")
     args = ap.parse_args()
     out = args.out or ROOT / "out" / f"drive_{Path(args.app).stem}.png"
-    raise SystemExit(drive(args.app, args.photo, args.port, out, args.settle, args.height))
+    raise SystemExit(
+        drive(args.app, args.photo, args.port, out, args.settle, args.height, args.intent)
+    )
 
 
 if __name__ == "__main__":
