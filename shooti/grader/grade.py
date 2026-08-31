@@ -75,3 +75,41 @@ def grade_batch(
 
 def grade(bgr: np.ndarray, channels: str = "both") -> Grade:
     return grade_batch([bgr], channels=channels)[0]
+
+
+CHANNEL_LABELS = {
+    "both": "CLIP + geometry",
+    "clip": "CLIP only",
+    "geo": "Geometry only",
+}
+
+
+def available_channels() -> list[str]:
+    return [c for c in ("both", "clip", "geo") if (CKPT_DIR / f"grader_{c}.pt").exists()]
+
+
+@torch.no_grad()
+def grade_all_channels(bgr: np.ndarray) -> dict[str, Grade]:
+    """Score one photo with every trained grader.
+
+    Embeds the image and measures its geometry once, then runs each head over the
+    same inputs — each head slices the channels it was trained on, so three
+    verdicts cost one CLIP pass rather than three.
+    """
+    channels = available_channels()
+    if not channels:
+        return {}
+
+    _, device = load_grader(channels[0])
+    clip = torch.from_numpy(embed_bgr([bgr], device=device)).float().to(device)
+    geo = torch.from_numpy(geometric_features(bgr)[None, :]).float().to(device)
+
+    out: dict[str, Grade] = {}
+    for name in channels:
+        model, _ = load_grader(name)
+        dist = model(clip, geo).cpu().numpy()[0]
+        bins = np.arange(1, len(dist) + 1, dtype=np.float64)
+        score = float(dist @ bins)
+        spread = float(np.sqrt(dist @ (bins - score) ** 2))
+        out[name] = Grade(score=score, distribution=dist, spread=spread)
+    return out
