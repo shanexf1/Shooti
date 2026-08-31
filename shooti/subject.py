@@ -67,6 +67,11 @@ class Face:
     eye_a: Point  # leftmost eye in frame
     eye_b: Point  # rightmost eye in frame
     nose: Point
+    # All five YuNet landmarks in the detector's own order:
+    # (subject's right eye, subject's left eye, nose tip, right mouth, left mouth).
+    # eye_a/eye_b above are these sorted by frame x, which loses the
+    # which-side-is-which information that head-pose estimation needs.
+    landmarks: tuple[Point, ...] = ()
 
     @property
     def eye_level(self) -> Point:
@@ -154,7 +159,7 @@ def detect_faces(bgr: np.ndarray, download: bool = True) -> list[Face]:
     for row in raw:
         x, y, bw, bh = (float(v) for v in row[:4])
         # Landmarks are five (x, y) pairs; the first two are the eyes.
-        p = [(float(row[4 + 2 * i]), float(row[5 + 2 * i])) for i in range(3)]
+        p = [(float(row[4 + 2 * i]), float(row[5 + 2 * i])) for i in range(5)]
         eyes = sorted(p[:2], key=lambda q: q[0])
         faces.append(
             Face(
@@ -163,6 +168,7 @@ def detect_faces(bgr: np.ndarray, download: bool = True) -> list[Face]:
                 eye_a=eyes[0],
                 eye_b=eyes[1],
                 nose=p[2],
+                landmarks=tuple(p),
             )
         )
     return faces

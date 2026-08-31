@@ -371,3 +371,111 @@ python -m shooti.intent.experiment --split validation
   can be two things at once. Only one set is applied.
 - **Keyword fallback is not language understanding.** It matches a word list. "I
   don't want a portrait" selects Portrait.
+
+---
+
+# v4 — human portraits only
+
+v1 through v3 tried to judge every photograph. That breadth was the problem: one
+engine cannot know that a symmetric building wants centering while a turned head
+wants nose room. v4 gives up every other subject and gets specific.
+
+## Rules that only exist because the domain is narrow
+
+| Rule | What it measures | Why it needs a portrait |
+|---|---|---|
+| **crop line** | where the frame cuts the body, in head-heights | "never crop at a joint" is *the* portrait rule and is meaningless elsewhere |
+| **eye line** | eyes vs a crop-dependent target band | a close-up wants eyes ~40% down; a full-length wants ~20% |
+| **headroom** | crown to frame top, band set by crop | an extreme close-up *should* crop the crown |
+| **nose room** | open space in the direction the head is turned | needs actual head yaw, not a bounding box |
+| **camera height** | face pitch relative to the lens | shooting up the nostrils is a portrait-specific failure |
+| **head tilt** | roll from the eye line | 3–16° flatters; dead level reads formal; 22°+ reads accidental |
+| **eye focus** | eye-region sharpness vs background | in a portrait the near eye carries the picture |
+| **face exposure** | clipping and crushing on the face only | face highlights matter more than frame highlights |
+| **light direction** | left/right luminance across the face | flat light renders features without shape |
+| **background intrusion** | vertical lines running into the head | the pole-growing-out-of-their-head problem |
+
+## How the body is located without body detection
+
+Cropping rules need joints, and a single photo gives no body landmarks. v4 uses
+the solution figure drawing uses: **the head is the unit.** An adult standing
+figure is ~7.5 heads tall and every landmark sits at a known depth, so face
+detection locates the head and the rest follows.
+
+Joint zones (crop here and it reads as an amputation): neck 1.02–1.30, shoulder
+1.32–1.52, elbow 2.72–3.00, wrist 3.68–3.98, knee 5.18–5.62, ankle 7.02–7.32
+head-heights from the crown.
+
+Verified against a real portrait: the predicted chin line landed on the subject's
+chin and the shoulder line on her shoulder, and the frame genuinely ended at
+1.50 heads — a shoulder cut, correctly flagged.
+
+**The assumption is upright, adult, one subject.** The app draws the predicted
+landmarks precisely so you can invalidate the analysis at a glance. In the test
+set, a boy climbing a tree produced predicted lines that visibly do not match his
+body, and `messi.jpg` reads 4.99 heads (mid-thigh) despite showing him head to
+foot, because he is lunging almost horizontally.
+
+## Head pose, and an ambiguity worth naming
+
+Yaw, pitch and roll come from fitting a canonical 3D face to the five detected
+landmarks with `solvePnP`. Five points suffice because the nose tip sits off the
+plane of the eyes and mouth.
+
+Focal length is unknown, so it is assumed to equal the image width — the estimate
+is approximate, and frontal faces read a few degrees of false pitch. It refuses
+outright below 12px between the eyes rather than reporting noise.
+
+**A single face cannot distinguish "the camera is below the subject" from "the
+subject raised their chin".** Both produce identical landmark geometry. So pitch
+is reported as the face's angle *relative to the lens* — which is what actually
+affects the photograph — and the advice offers both remedies.
+
+## The human check, and why it only warns
+
+Face detection answers a different question than "is this a person". On the test
+set YuNet found the cartoon face painted on a Thomas the Tank Engine toy at 0.83
+confidence with all five landmarks correctly placed. It was not wrong; that is a
+face. It is not a human.
+
+A CLIP zero-shot check gates on this, and its development is worth recording
+because the first version was worse than useless:
+
+| Prompt set | Result |
+|---|---|
+| Elaborate (5 non-human prompts incl. "doll or mannequin") | **3 of 6 real humans rejected** |
+| Simplest possible ("a photo of a person" vs "a photo of a toy") | 7/7 on those samples |
+
+The simple pair won, but it was *chosen* on those 7 samples, so that number is
+selection-on-the-test-set. Evaluated properly on **24 face crops mined from a
+different shard and hand-labelled, with no tuning against them: 22/24 (92%)** —
+19/20 humans kept, 3/4 non-humans caught. Both errors sat within 0.003 of the
+decision boundary, which is why there is now an explicit "uncertain" band.
+
+**It never blocks.** A portrait tool that refuses a real portrait is worse than
+one that analyses a cat, and at ~5% false-rejection it would do that.
+
+## Running v4
+
+```bash
+.venv/bin/python -m streamlit run app4.py
+```
+
+No API key needed — v4 makes no LLM calls at all. Every rule is measured.
+
+## v4 limits
+
+- **Upright, adult, single subject.** Children run 5–6 heads rather than 7.5, so
+  crop names shift for them. Seated and reclining subjects break the crop rule.
+- **Head pose is approximate** — unknown focal length, a few degrees of bias on
+  frontal faces, and refused below 12px inter-ocular.
+- **The human check is 92% on n=24.** Small sample; treat as indicative.
+- **Eye "sharpness" is a Laplacian ratio, not focus truth.** Heavy grain, high
+  ISO noise, or a busy sharp background can move it either way.
+- **Lighting is measured on the face box**, which includes hair and background at
+  the corners, so side-ratio is a rough proxy for light direction.
+- **No score validation.** Unlike v2's grader, the v4 score has *not* been tested
+  against human ratings. Given that v1's and v3's rule scores both measured at
+  ~0 correlation, the honest expectation is that this one has little predictive
+  power either. Its value is the specificity of the individual findings, not the
+  number.
