@@ -24,6 +24,10 @@ Built for Project 0. It demonstrates the two required properties:
   *is* to where it *should be*), plus optional Claude vision coaching that
   prioritizes the three moves worth making.
 
+**📊 [How it works — flow charts of both pipelines](docs/architecture.md)** —
+the shared measurement layer, the two judges, the counterfactual advice loop, and
+the training split discipline.
+
 ## The design bet
 
 Most photo-feedback tools describe a photo. Shooti's split is deliberate:
