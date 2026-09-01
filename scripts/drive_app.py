@@ -63,14 +63,23 @@ def drive(app: str, photo: Path, port: int, out: Path, settle: int, height: int,
             # v3 takes a stated intent; fill it before uploading so the first
             # render already has it.
             if intent:
-                area = page.query_selector("textarea")
-                if area:
-                    area.fill(intent)
+                # v3 uses a textarea; v4.x uses a text_input. Try both, and match
+                # the intent box by its placeholder so a key field is never filled.
+                target = page.query_selector("textarea")
+                if target is None:
+                    for sel in ('input[placeholder*="editorial"]',
+                                'input[placeholder*="approachable"]',
+                                'input[placeholder*="know"]'):
+                        target = page.query_selector(sel)
+                        if target is not None:
+                            break
+                if target is not None:
+                    target.fill(intent)
                     page.keyboard.press("Tab")  # commit the widget value
-                    page.wait_for_timeout(1200)
+                    page.wait_for_timeout(1500)
                     print(f"intent typed: {intent!r}")
                 else:
-                    print("note: no textarea found for intent")
+                    print("note: no intent field found")
 
             page.set_input_files("input[type=file]", str(photo))
             print(f"uploaded {photo}")

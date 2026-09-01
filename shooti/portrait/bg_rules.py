@@ -14,6 +14,7 @@ from __future__ import annotations
 from ..rules import Finding
 from ..subject import Face
 from .background import BackgroundAnalysis
+from .styles import NEUTRAL, Style
 
 SEPARATION_LOW = 0.10
 BLUR_WANTED = 1.5
@@ -30,7 +31,7 @@ def _f(rule, sev, msg, action, penalty=0.0, **data) -> Finding:
     return Finding(rule, sev, msg, action, penalty=penalty, data=data)
 
 
-def _separation(b: BackgroundAnalysis) -> Finding:
+def _separation(b: BackgroundAnalysis, st: Style = NEUTRAL) -> Finding:
     if b.merges:
         return _f("subject separation", "major",
                   f"The subject is dissolving into the background — tone behind the head is "
@@ -39,12 +40,12 @@ def _separation(b: BackgroundAnalysis) -> Finding:
                   "Move them so a lighter or darker area sits behind the head, add a hair or "
                   "rim light, or change your angle so the background behind them changes.",
                   penalty=18.0, sep_luma=b.separation_luma, sep_color=b.separation_color)
-    if b.separation_luma < SEPARATION_LOW and b.separation_color >= SEPARATION_LOW:
+    if b.separation_luma < st.separation_low and b.separation_color >= st.separation_low:
         return _f("subject separation", "ok",
                   "Tonally the subject and background are close, but the colours differ enough "
                   "to hold them apart.",
                   "Nothing to correct.", sep_color=b.separation_color)
-    if b.separation_luma < SEPARATION_LOW:
+    if b.separation_luma < st.separation_low:
         return _f("subject separation", "minor",
                   f"Little tonal contrast behind the head ({b.halo_luma:.0f} vs "
                   f"{b.face_luma:.0f} on the face).",
@@ -57,8 +58,8 @@ def _separation(b: BackgroundAnalysis) -> Finding:
               "Nothing to correct.", sep_luma=b.separation_luma)
 
 
-def _depth(b: BackgroundAnalysis) -> Finding:
-    if b.blur_ratio >= BLUR_WANTED:
+def _depth(b: BackgroundAnalysis, st: Style = NEUTRAL) -> Finding:
+    if b.blur_ratio >= st.blur_wanted:
         return _f("background blur", "ok",
                   f"The face is {b.blur_ratio:.1f}× sharper than the background, so the "
                   "background stays subordinate.",
@@ -74,7 +75,7 @@ def _depth(b: BackgroundAnalysis) -> Finding:
               f"The background is nearly as sharp as the face ({b.blur_ratio:.2f}×), so it "
               "holds detail that pulls attention.",
               "Open up a stop or two, or put more distance between subject and background.",
-              penalty=min(10.0, (BLUR_WANTED - b.blur_ratio) * 18.0), blur_ratio=b.blur_ratio)
+              penalty=min(10.0, (st.blur_wanted - b.blur_ratio) * 18.0), blur_ratio=b.blur_ratio)
 
 
 def _hotspots(b: BackgroundAnalysis) -> Finding:
@@ -178,27 +179,27 @@ def _escape(b: BackgroundAnalysis) -> Finding:
               penalty=min(9.0, (pull - CORNER_PULL) * 0.16), pull=pull)
 
 
-def _clutter(b: BackgroundAnalysis) -> Finding:
-    if b.clutter <= CLUTTER_HIGH:
+def _clutter(b: BackgroundAnalysis, st: Style = NEUTRAL) -> Finding:
+    if b.clutter <= st.clutter_high:
         return _f("background clutter", "ok",
                   f"The background is reasonably clean (edge density {b.clutter:.2f}).",
                   "Nothing to correct.", clutter=b.clutter)
-    return _f("background clutter", "major" if b.clutter > 0.24 else "minor",
+    return _f("background clutter", "major" if b.clutter > st.clutter_high * 1.7 else "minor",
               f"The background is busy (edge density {b.clutter:.2f}) and competes with the face.",
               "Open the aperture, move the subject away from the background, find a plainer wall, "
               "or shoot from a lower or higher angle to put sky or ground behind them.",
-              penalty=min(14.0, (b.clutter - CLUTTER_HIGH) * 55.0), clutter=b.clutter)
+              penalty=min(14.0, (b.clutter - st.clutter_high) * 55.0), clutter=b.clutter)
 
 
-def evaluate(b: BackgroundAnalysis, face: Face) -> list[Finding]:
+def evaluate(b: BackgroundAnalysis, face: Face, style: Style = NEUTRAL) -> list[Finding]:
     findings = [
-        _separation(b),
-        _depth(b),
+        _separation(b, style),
+        _depth(b, style),
         _hotspots(b),
         _rivals(b),
         _colour(b),
         _escape(b),
-        _clutter(b),
+        _clutter(b, style),
     ]
     findings += _lines(b, face)
     return findings

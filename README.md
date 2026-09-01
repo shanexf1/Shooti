@@ -579,3 +579,99 @@ Claude/ChatGPT switch for optional coaching.
 - **These nine rules are unvalidated against human ratings**, exactly like v4's.
   Given v1's and v3's rule scores both measured ~0 correlation, the value is in
   the specificity of each finding, not the score.
+
+
+---
+
+# v4.2 — the model adjusts the judging
+
+A fair criticism of v4 and v4.1: **the LLM was downstream of judging.** It read
+the findings and narrated them. It could not change the verdict, and every
+threshold was a hard-coded constant. (v3 actually had the LLM *upstream* — it
+picked the rule set — and v4 dropped that.)
+
+In v4.2 the model does two things that change the verdict.
+
+## 1. It picks the style, which shifts every tolerance
+
+| Style | Tilt limit | Eye focus min | Clutter tolerated | Background blur wanted |
+|---|---|---|---|---|
+| Formal headshot | 12° | 1.4× | 0.08 | 2.0× |
+| Beauty / close-up | 26° | 1.6× | 0.06 | 2.2× |
+| Editorial | 28° | 1.15× | 0.18 | 1.3× |
+| Environmental | 22° | 1.15× | 0.30 | 0.9× |
+| Candid / documentary | 32° | 0.95× | 0.34 | 0.8× |
+| *Neutral* | *22°* | *1.15×* | *0.14* | *1.5×* |
+
+Environmental and candid work deliberately want a **readable** background
+(`blur_wanted` below 1.0), which is the opposite of what a headshot wants. One
+photo, judged under all six: a boy climbing a tree scores **20 as beauty** and
+**56 as candid**. Neutral reproduces v4's constants exactly, so v4 and v4.1 are
+unchanged.
+
+## 2. It reviews individual findings
+
+The measurements have blind spots the model can see straight past:
+
+- "vertical intrusion" finds a **line**, not a pole — it cannot tell a lamp post
+  behind the head from the subject's own raised arm
+- "colour distraction" cannot tell a red road sign from the subject's red coat
+- the crop-line rule assumes an upright adult and cannot see that they are seated
+
+So the model may **dismiss** a finding (with what it sees that makes the finding
+wrong) or **escalate** one the measurement understated.
+
+## The guardrails, and why they exist
+
+A model that dismisses everything to be agreeable would be worse than no review
+at all. So:
+
+| Guardrail | Effect |
+|---|---|
+| At most 3 dismissals | caps how much can be waved away |
+| Reason ≥ 15 chars required | blocks "ok" / "fine" |
+| Dismissals may not lift the score > +25 | bounds total leniency |
+| Rule name must exist and be currently failing | blocks hallucinated and no-op dismissals |
+| Unknown style → neutral | a made-up style cannot loosen anything |
+| Every decision shown with its reason | nothing changes silently |
+
+**These were tested by injecting adversarial responses** (no API key needed —
+the guardrail logic is pure Python):
+
+| Injected response | Outcome |
+|---|---|
+| Dismiss all 6 findings with plausible reasons | 2 applied, 3rd blocked by the +25 cap, rest truncated by the 3-dismissal limit |
+| Dismiss with reasons "ok" / "fine" | both blocked, "no specific reason given" |
+| Dismiss `vibes`, `bokeh quality` | both blocked, "no such finding in this critique" |
+| Dismiss a rule that already passed | blocked, "that finding already passed" |
+| Style `cinematic_dreamy` | fell back to neutral |
+| Escalate `background clutter` | applied, score 56 → 44 |
+
+## Three scores, not one
+
+The app reports **rules as written → re-judged under the style → after review**,
+because conflating them would hide which one moved the number. On the tree photo
+with intent "candid documentary": 36 → 56 (↑20 from the style) → 56 (no findings
+dismissed, because no key was present).
+
+## Running v4.2
+
+```bash
+.venv/bin/python -m streamlit run app4_2.py
+```
+
+Without a key: style comes from keyword matching, no findings are reviewed, and
+the app says so. With a key (Claude or ChatGPT, same switch as v4): the model
+picks the style and reviews the findings.
+
+## v4.2 limits
+
+- **The review path has never been executed.** No API key of either kind has been
+  available. The guardrails are tested by injection and the failure paths are
+  tested, but no real model has ever returned a `DISMISS` line here.
+- **Guardrails bound the damage, they do not detect a wrong dismissal.** A model
+  that confidently invents a plausible visual reason will get its dismissal
+  applied. The defence is that every reason is shown to you.
+- **Style tolerances are hand-set**, like every threshold in this project, and
+  unvalidated against human ratings.
+- **Only one style applies at a time.** A portrait can be candid *and* editorial.

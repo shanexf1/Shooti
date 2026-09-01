@@ -23,6 +23,7 @@ from .anatomy import CropGeometry, crop_geometry, nearest_safe
 from .human import HumanCheck
 from .pose import HeadPose
 from .quality import EyeFocus, FaceLight, HeadBackground
+from .styles import NEUTRAL, Style
 
 # (eye-line low, high), (headroom low, high) as fractions of frame height,
 # keyed by the crop name from anatomy.CROP_NAMES.
@@ -58,6 +59,7 @@ class PortraitVerdict:
     score: int = 100
     notes: list[str] = field(default_factory=list)
     background: object | None = None  # BackgroundAnalysis when v4.1 ran
+    style: object | None = None  # Style actually applied
 
     @property
     def problems(self) -> list[Finding]:
@@ -68,7 +70,7 @@ def _f(rule, sev, msg, action, penalty=0.0, **data) -> Finding:
     return Finding(rule, sev, msg, action, penalty=penalty, data=data)
 
 
-def _crop_line(geo: CropGeometry) -> Finding:
+def _crop_line(geo: CropGeometry, st: Style = NEUTRAL) -> Finding:
     if not geo.body_visible:
         return _f("crop line", "ok",
                   f"A {geo.crop_name} — the frame ends above the body, so there's no joint to cut.",
@@ -77,11 +79,12 @@ def _crop_line(geo: CropGeometry) -> Finding:
         target, label = nearest_safe(geo.heads_to_bottom)
         delta = target - geo.heads_to_bottom
         direction = "wider (step back or zoom out)" if delta > 0 else "tighter (step in or zoom in)"
-        return _f("crop line", "major",
+        return _f("crop line", st.crop_joint_severity,
                   f"The frame cuts through {geo.joint}, at {geo.heads_to_bottom:.2f} head-heights. "
                   "A crop landing on a joint reads as an amputation.",
                   f"Reframe about {abs(delta):.2f} head-heights {direction} to land on {label}.",
-                  penalty=18.0, heads=geo.heads_to_bottom, joint=geo.joint)
+                  penalty=18.0 if st.crop_joint_severity == "major" else 8.0,
+                  heads=geo.heads_to_bottom, joint=geo.joint)
     if geo.safe_zone:
         return _f("crop line", "ok",
                   f"The frame ends at {geo.heads_to_bottom:.2f} head-heights — {geo.safe_zone}, "
@@ -139,7 +142,7 @@ def _headroom(face: Face, geo: CropGeometry, frame_h: int) -> Finding:
               "Tilt up slightly or step back.", penalty=8.0, gap=gap)
 
 
-def _nose_room(face: Face, pose: HeadPose, frame_w: int) -> Finding:
+def _nose_room(face: Face, pose: HeadPose, frame_w: int, st: Style = NEUTRAL) -> Finding:
     if not pose.ok:
         return _f("nose room", "ok", "Head pose isn't reliable here, so gaze direction is unknown.",
                   "Nothing to correct.")
@@ -151,7 +154,7 @@ def _nose_room(face: Face, pose: HeadPose, frame_w: int) -> Finding:
     nx = ex / frame_w
     ahead = (1.0 - nx) if pose.yaw_deg > 0 else nx
     facing = "right" if pose.yaw_deg > 0 else "left"
-    if ahead >= NOSE_ROOM_MIN:
+    if ahead >= st.nose_room_min:
         return _f("nose room", "ok",
                   f"Turned {abs(pose.yaw_deg):.0f}° toward frame {facing}, with "
                   f"{ahead * 100:.0f}% of the frame open that way.",
@@ -160,12 +163,12 @@ def _nose_room(face: Face, pose: HeadPose, frame_w: int) -> Finding:
               f"Turned {abs(pose.yaw_deg):.0f}° toward frame {facing}, but only "
               f"{ahead * 100:.0f}% of the frame is open ahead of the face. The gaze runs into the edge.",
               f"Pan {facing} to put more space in front of the face than behind the head.",
-              penalty=min(16.0, (NOSE_ROOM_MIN - ahead) * 70.0), ahead=ahead)
+              penalty=min(16.0, (st.nose_room_min - ahead) * 70.0), ahead=ahead)
 
 
-def _head_tilt(pose: HeadPose) -> Finding:
+def _head_tilt(pose: HeadPose, st: Style = NEUTRAL) -> Finding:
     roll = abs(pose.roll_deg)
-    if roll > TILT_EXCESSIVE:
+    if roll > st.tilt_excessive:
         return _f("head tilt", "minor",
                   f"Head is canted {roll:.0f}°, past the point where it reads as a choice.",
                   "Straighten the head, or commit and level the eye line to the frame.",
@@ -179,30 +182,30 @@ def _head_tilt(pose: HeadPose) -> Finding:
               "Fine as is; a 5-10° tilt would soften it if you want that.", roll=pose.roll_deg)
 
 
-def _face_angle(pose: HeadPose) -> Finding:
+def _face_angle(pose: HeadPose, st: Style = NEUTRAL) -> Finding:
     if not pose.ok:
         return _f("camera height", "ok", pose.note, "Nothing to correct.")
     p = pose.pitch_deg
-    if p < PITCH_UP_LIMIT:
+    if p < st.pitch_up_limit:
         return _f("camera height", "major" if p < -18 else "minor",
                   f"The face is angled {abs(p):.0f}° UP relative to the lens — you are shooting "
                   "from below eye level, which foreshortens the chin and looks up the nostrils.",
                   "Raise the camera to at least eye level, or ask them to lower their chin. "
                   "(A single photo can't separate a low camera from a raised chin — either fix works.)",
-                  penalty=min(20.0, abs(p - PITCH_UP_LIMIT) * 1.2), pitch=p)
-    if p > PITCH_DOWN_LIMIT:
+                  penalty=min(20.0, abs(p - st.pitch_up_limit) * 1.2), pitch=p)
+    if p > st.pitch_down_limit:
         return _f("camera height", "minor",
                   f"The face is angled {p:.0f}° DOWN relative to the lens — a high camera or a "
                   "dropped chin. Slightly above eye level flatters; this far is a lot.",
                   "Lower the camera toward eye level, or ask them to lift their chin.",
-                  penalty=min(12.0, (p - PITCH_DOWN_LIMIT) * 0.8), pitch=p)
+                  penalty=min(12.0, (p - st.pitch_down_limit) * 0.8), pitch=p)
     return _f("camera height", "ok",
               f"The face is within {max(abs(p), 1):.0f}° of square to the lens — around eye level.",
               "Hold this height.", pitch=p)
 
 
-def _eye_focus(focus: EyeFocus) -> Finding:
-    if focus.ratio_to_background >= EYE_FOCUS_MIN:
+def _eye_focus(focus: EyeFocus, st: Style = NEUTRAL) -> Finding:
+    if focus.ratio_to_background >= st.eye_focus_min:
         return _f("eye focus", "ok",
                   f"The eyes are the sharpest thing in frame ({focus.ratio_to_background:.1f}× "
                   "the background).",
@@ -213,7 +216,7 @@ def _eye_focus(focus: EyeFocus) -> Finding:
               "carries the picture.",
               "Focus on the near eye — single-point AF or eye-detect — and check the shutter "
               "speed is fast enough to freeze small movements.",
-              penalty=min(20.0, (EYE_FOCUS_MIN - focus.ratio_to_background) * 26.0),
+              penalty=min(20.0, (st.eye_focus_min - focus.ratio_to_background) * 26.0),
               ratio=focus.ratio_to_background)
 
 
@@ -295,18 +298,19 @@ def evaluate(
     focus: EyeFocus,
     light: FaceLight,
     bg: HeadBackground,
+    style: Style = NEUTRAL,
 ) -> PortraitVerdict:
     h, w = bgr.shape[:2]
     geo = crop_geometry(face.box, h)
 
     findings = [
-        _crop_line(geo),
+        _crop_line(geo, style),
         _eye_line(face, geo, h),
         _headroom(face, geo, h),
-        _nose_room(face, pose, w),
-        _head_tilt(pose),
-        _face_angle(pose),
-        _eye_focus(focus),
+        _nose_room(face, pose, w, style),
+        _head_tilt(pose, style),
+        _face_angle(pose, style),
+        _eye_focus(focus, style),
     ]
     findings += _lighting(light)
     findings += _background(bg)
@@ -328,7 +332,9 @@ def evaluate(
     score = int(round(max(0.0, 100.0 - sum(f.penalty for f in findings))))
     order = {"major": 0, "minor": 1, "ok": 2}
     findings.sort(key=lambda f: (order[f.severity], -f.penalty))
-    return PortraitVerdict(geo, pose, human, findings, score, notes)
+    v = PortraitVerdict(geo, pose, human, findings, score, notes)
+    v.style = style
+    return v
 
 
 def analyze_portrait(
@@ -337,6 +343,7 @@ def analyze_portrait(
     *,
     all_faces: list[Face] | None = None,
     deep_background: bool = False,
+    style: Style = NEUTRAL,
 ) -> PortraitVerdict:
     """Run every measurement and evaluate.
 
@@ -355,6 +362,7 @@ def analyze_portrait(
         eye_focus(bgr, face),
         face_light(bgr, face),
         head_background(bgr, face),
+        style,
     )
     if not deep_background:
         return verdict
@@ -366,7 +374,7 @@ def analyze_portrait(
     # The v4 background rules are superseded by the detailed ones.
     kept = [f for f in verdict.findings
             if f.rule not in ("background intrusion", "background clutter")]
-    verdict.findings = kept + bg_rules.evaluate(analysis, face)
+    verdict.findings = kept + bg_rules.evaluate(analysis, face, style)
     verdict.background = analysis
     verdict.score = int(round(max(0.0, 100.0 - sum(f.penalty for f in verdict.findings))))
     order = {"major": 0, "minor": 1, "ok": 2}
