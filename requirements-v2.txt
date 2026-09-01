@@ -11,3 +11,6 @@ scipy>=1.14
 
 # Only needed if you re-fetch the dataset through the datasets library.
 datasets>=3.0
+
+# v4 portrait coaching can call either provider; both are optional at runtime.
+openai>=1.50

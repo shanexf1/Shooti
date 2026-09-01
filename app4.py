@@ -11,6 +11,11 @@ Every rule here is portrait craft that would be meaningless elsewhere:
   - do not shoot from below eye level into the nostrils
   - the near eye must be the sharpest thing in frame
   - nothing vertical growing out of the head
+
+Every rule above is measured in Python and needs no API key. On top of that,
+optional coaching can be requested from either Claude or ChatGPT — switchable in
+the sidebar — which is given the photo plus these measurements and told not to
+re-estimate the geometry itself.
 """
 
 from __future__ import annotations
@@ -18,6 +23,15 @@ from __future__ import annotations
 import streamlit as st
 
 from shooti.loader import load_bgr
+from shooti.portrait.coach import (
+    DEFAULT_MODELS,
+    KEY_ENV,
+    PROVIDER_LABELS,
+    CoachError,
+    coach,
+    list_models,
+    measurements_text,
+)
 from shooti.portrait.overlay import render, to_rgb
 from shooti.portrait.rules import analyze_portrait
 from shooti.subject import detect_faces
@@ -46,6 +60,46 @@ with st.sidebar:
         if source == "Camera"
         else st.file_uploader("Portrait", type=["jpg", "jpeg", "png", "webp"])
     )
+
+    st.header("AI coaching")
+    st.caption("Optional. Everything else on this page is measured without an API.")
+
+    # A real switch rather than a dropdown: the provider choice is a mode, and
+    # the key/model fields below change meaning with it.
+    provider = st.segmented_control(
+        "Provider",
+        options=list(PROVIDER_LABELS),
+        format_func=lambda p: PROVIDER_LABELS[p],
+        default="claude",
+        key="provider",
+    ) or "claude"
+
+    api_key = st.text_input(
+        f"{PROVIDER_LABELS[provider]} API key",
+        type="password",
+        key=f"key_{provider}",  # keys are kept separate per provider
+        help=f"Or set {KEY_ENV[provider]} in the environment. Never committed anywhere.",
+    )
+    model = st.text_input(
+        "Model",
+        value=DEFAULT_MODELS[provider],
+        key=f"model_{provider}",
+        help="Change this if your account uses a different model name.",
+    )
+    intent = st.text_input(
+        "Anything the model should know?",
+        placeholder="editorial headshot, she wants it to feel approachable",
+    )
+
+    ask = st.button("Get coaching", width="stretch", type="primary")
+    if st.button("List models this key can call", width="stretch"):
+        try:
+            available = list_models(provider, api_key or None)
+        except CoachError as exc:
+            st.error(str(exc))
+        else:
+            st.success(f"{len(available)} models available")
+            st.code("\n".join(available), language="text")
 
     st.header("Overlay")
     layers = {
@@ -163,6 +217,43 @@ if verdict.notes:
     st.subheader("What this analysis assumes")
     for n in verdict.notes:
         st.warning(n)
+
+st.divider()
+
+if ask:
+    with st.spinner(f"Asking {PROVIDER_LABELS[provider]}…"):
+        try:
+            result = coach(
+                bgr, verdict,
+                provider=provider,
+                api_key=api_key or None,
+                model=model or None,
+                intent=intent or None,
+            )
+        except CoachError as exc:
+            st.error(str(exc))
+        else:
+            st.subheader(f"{PROVIDER_LABELS[result.provider]} says")
+            st.markdown(result.text)
+            tokens = (
+                f" · {result.input_tokens} in / {result.output_tokens} out tokens"
+                if result.input_tokens is not None
+                else ""
+            )
+            st.caption(f"{result.model}{tokens}")
+            st.caption(
+                "The measurements above were sent as text alongside the photo, with "
+                "instructions not to re-estimate them — so the model ranks and "
+                "interprets rather than guessing at geometry."
+            )
+else:
+    st.caption(
+        f"Pick a provider in the sidebar, paste a key, and press **Get coaching** to "
+        f"have {PROVIDER_LABELS[provider]} read the photo alongside these measurements."
+    )
+
+with st.expander("What gets sent to the model"):
+    st.code(measurements_text(verdict, intent or None), language="text")
 
 with st.expander("Raw measurements"):
     st.code(

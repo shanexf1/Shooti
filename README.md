@@ -455,13 +455,40 @@ decision boundary, which is why there is now an explicit "uncertain" band.
 **It never blocks.** A portrait tool that refuses a real portrait is worse than
 one that analyses a cat, and at ~5% false-rejection it would do that.
 
+## Optional coaching: Claude or ChatGPT, switchable
+
+Every rule above is measured in Python and needs no API key. On top of that, v4
+can ask a vision model to read the photo *alongside* the measurements and rank
+what to fix. The sidebar has a provider switch:
+
+| | Claude (Anthropic) | ChatGPT (OpenAI) |
+|---|---|---|
+| SDK | `anthropic` | `openai` |
+| Default model | `claude-opus-5` | `gpt-4o` |
+| Key env var | `ANTHROPIC_API_KEY` | `OPENAI_API_KEY` |
+
+Both get an **identical system prompt and identical grounding text**, so
+switching compares the models rather than two different prompts. Keys are held
+separately per provider, so switching back and forth does not lose one.
+
+The model is told to trust the measurements and not re-estimate geometry — a
+language model asked to judge headroom will invent a percentage, while the CV
+layer can measure it. "What gets sent to the model" in the app shows exactly what
+it receives.
+
+Two conveniences, because model names are the usual failure: the **Model** field
+is editable, and **List models this key can call** queries the provider so you do
+not have to guess. `gpt-4o` is a guess on my part — I have no OpenAI key to check
+against, so change it if your account uses something else.
+
 ## Running v4
 
 ```bash
 .venv/bin/python -m streamlit run app4.py
 ```
 
-No API key needed — v4 makes no LLM calls at all. Every rule is measured.
+Works with no key at all — the score, the overlay and all ten findings are pure
+measurement. Only the coaching button needs credentials.
 
 ## v4 limits
 
@@ -474,6 +501,12 @@ No API key needed — v4 makes no LLM calls at all. Every rule is measured.
   ISO noise, or a busy sharp background can move it either way.
 - **Lighting is measured on the face box**, which includes hair and background at
   the corners, so side-ratio is a rough proxy for light direction.
+- **Neither coaching provider has ever been called.** No Anthropic or OpenAI key
+  was available at any point in this project. Both request shapes are checked
+  against the installed SDKs (the OpenAI image-part shape was read out of
+  `ChatCompletionContentPartImageParam` rather than recalled), and every failure
+  path is tested — no-key, bad key, unknown model, rate limit, no connection. The
+  happy path is untested by me.
 - **No score validation.** Unlike v2's grader, the v4 score has *not* been tested
   against human ratings. Given that v1's and v3's rule scores both measured at
   ~0 correlation, the honest expectation is that this one has little predictive
