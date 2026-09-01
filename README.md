@@ -512,3 +512,70 @@ measurement. Only the coaching button needs credentials.
   ~0 correlation, the honest expectation is that this one has little predictive
   power either. Its value is the specificity of the individual findings, not the
   number.
+
+
+---
+
+# v4.1 — the background, properly
+
+v4 had two coarse background rules. Half a portrait is what is behind the
+subject, so v4.1 replaces them with nine specific ones. `app4.py` is unchanged;
+`app4_1.py` is the version with these on.
+
+| Rule | Measures | The mistake it catches |
+|---|---|---|
+| **subject separation** | tone + colour in a ring around the head | the silhouette dissolving into the background |
+| **background blur** | face sharpness ÷ background sharpness | a background as sharp as the face, competing |
+| **bright distractions** | blown patches, sized and located in head-heights | a sky gap or window pulling the eye off the face |
+| **competing faces** | other detected faces above a size threshold | a second face splitting the viewer's attention |
+| **colour distraction** | saturated patches vs muted skin | a red sign outranking the subject |
+| **eye escape** | corner luminance vs face luminance | bright corners walking the eye out of frame |
+| **background clutter** | edge density over the background only | general busy-ness |
+| **vertical intrusion** | near-vertical line into the head | a pole growing out of them |
+| **horizontal intrusion** | long horizontal crossing head or neck | a horizon or railing slicing the subject |
+
+## Measured around the head, not across the frame
+
+Separation is judged in an **elliptical halo ring immediately around the head**,
+because that is where the eye actually compares. A dark subject against a dark
+room is fine if the wall directly behind their head is light — a whole-frame
+average would miss that entirely. The app draws the ring, so a complaint about
+"tone behind the head" points at the pixels it measured.
+
+Verified on a real photo: a boy photographed in a dappled tree reports halo
+luminance 126 against a face at 124 — 1% tonal and 0% colour separation — and is
+correctly told he is dissolving into the background. The same frame catches a
+branch as a horizontal crossing his head, and reports the background as *sharper*
+than the face (0.74×).
+
+## The white-backdrop exception
+
+A first run flagged three "bright distractions" on a plain white studio portrait.
+That is the background the photographer chose, not a distraction. So a bright
+region larger than 18% of the frame with low clutter is now read as an
+intentional backdrop and passes. Without that exception, every studio portrait
+gets scolded for its own background.
+
+## Running v4.1
+
+```bash
+.venv/bin/python -m streamlit run app4_1.py
+```
+
+Same as v4: no API key needed for any of the measurement, and the same
+Claude/ChatGPT switch for optional coaching.
+
+## v4.1 limits
+
+- **The head silhouette is an ellipse**, not a segmentation. Long or voluminous
+  hair falls outside it, so some of the "halo" is really the subject.
+- **Blur ratio is a Laplacian ratio, not a depth measurement.** A background
+  that is genuinely flat and textureless (a painted wall) reads as blurred, and a
+  grainy or noisy background reads as sharper than it looks.
+- **Hotspot detection triggers on pure white only** (L > 246). A merely bright
+  distraction below that threshold is missed.
+- **Line detection finds lines, not objects.** A striped shirt or a strong
+  shadow can register as an intrusion, and a soft-edged pole can be missed.
+- **These nine rules are unvalidated against human ratings**, exactly like v4's.
+  Given v1's and v3's rule scores both measured ~0 correlation, the value is in
+  the specificity of each finding, not the score.

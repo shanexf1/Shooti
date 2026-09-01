@@ -38,6 +38,11 @@ def _label(img, text, org, color, scale, thick):
     cv2.putText(img, text, (x, y - 2), cv2.FONT_HERSHEY_SIMPLEX, scale, color, thick, cv2.LINE_AA)
 
 
+def _head_ellipse_for_draw(face: Face):
+    fx, fy, fw, fh = face.box
+    return (int(fx + fw / 2.0), int(fy + fh * 0.42)), (int(fw * 0.80), int(fh * 0.95))
+
+
 def _dashed(img, p0, p1, color, thick, dash=12):
     p0, p1 = np.array(p0, float), np.array(p1, float)
     dist = float(np.hypot(*(p1 - p0)))
@@ -60,6 +65,8 @@ def render(
     show_body: bool = True,
     show_eye_line: bool = True,
     show_pose: bool = True,
+    background=None,  # BackgroundAnalysis, for v4.1
+    show_background: bool = False,
 ) -> np.ndarray:
     img = bgr.copy()
     h, w = img.shape[:2]
@@ -103,6 +110,34 @@ def render(
         for i, lm in enumerate(face.landmarks):
             cv2.circle(img, (int(lm[0]), int(lm[1])), max(2, t * 2), AMBER, -1, cv2.LINE_AA)
         _label(img, f"face {face.score:.2f}", (fx, max(14, fy - 5)), CYAN, s * 0.85, t)
+
+    if show_background and background is not None:
+        # The halo ring is where separation is judged, so show it: a complaint
+        # about "tone behind the head" should point at the pixels it measured.
+        centre, axes = _head_ellipse_for_draw(face)
+        cv2.ellipse(img, centre, (int(axes[0] * 1.75), int(axes[1] * 1.75)), 0, 0, 360,
+                    MAGENTA, t, cv2.LINE_AA)
+        _label(img, f"halo L {background.halo_luma:.0f} vs face {background.face_luma:.0f}",
+               (centre[0] - int(axes[0] * 1.75), centre[1] - int(axes[1] * 1.75) - 6),
+               MAGENTA, s * 0.8, t)
+
+        for spot in background.hotspots:
+            r = max(6, int((spot.area_frac * img.shape[0] * img.shape[1]) ** 0.5 / 2))
+            cv2.circle(img, (int(spot.x), int(spot.y)), r, RED, t + 1, cv2.LINE_AA)
+            _label(img, f"blown {spot.area_frac * 100:.1f}%",
+                   (int(spot.x) - 30, int(spot.y) - r - 4), RED, s * 0.75, t)
+
+        for spot in background.saturated_patches:
+            cv2.circle(img, (int(spot.x), int(spot.y)), 12, AMBER, t + 1, cv2.LINE_AA)
+
+        if background.vertical_intrusion_x is not None:
+            x = int(background.vertical_intrusion_x)
+            cv2.line(img, (x, 0), (x, h), RED, t + 1, cv2.LINE_AA)
+            _label(img, "vertical into head", (x + 4, 20), RED, s * 0.8, t)
+        if background.horizontal_intrusion_y is not None:
+            y = int(background.horizontal_intrusion_y)
+            cv2.line(img, (0, y), (w, y), RED, t + 1, cv2.LINE_AA)
+            _label(img, "horizontal across subject", (6, y - 6), RED, s * 0.8, t)
 
     if show_pose and pose.ok:
         ex, ey = face.eye_level

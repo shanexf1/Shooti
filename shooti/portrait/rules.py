@@ -57,6 +57,7 @@ class PortraitVerdict:
     findings: list[Finding] = field(default_factory=list)
     score: int = 100
     notes: list[str] = field(default_factory=list)
+    background: object | None = None  # BackgroundAnalysis when v4.1 ran
 
     @property
     def problems(self) -> list[Finding]:
@@ -330,13 +331,24 @@ def evaluate(
     return PortraitVerdict(geo, pose, human, findings, score, notes)
 
 
-def analyze_portrait(bgr: np.ndarray, face: Face) -> PortraitVerdict:
-    """Convenience: run every measurement and evaluate."""
+def analyze_portrait(
+    bgr: np.ndarray,
+    face: Face,
+    *,
+    all_faces: list[Face] | None = None,
+    deep_background: bool = False,
+) -> PortraitVerdict:
+    """Run every measurement and evaluate.
+
+    deep_background=False keeps exactly the rule set v4 was built with.
+    deep_background=True adds v4.1's background findings, which replace the two
+    coarse background rules with nine specific ones.
+    """
     from .human import check as human_check
     from .pose import estimate
     from .quality import eye_focus, face_light, head_background
 
-    return evaluate(
+    verdict = evaluate(
         bgr, face,
         estimate(face, bgr.shape),
         human_check(bgr, face.box),
@@ -344,3 +356,19 @@ def analyze_portrait(bgr: np.ndarray, face: Face) -> PortraitVerdict:
         face_light(bgr, face),
         head_background(bgr, face),
     )
+    if not deep_background:
+        return verdict
+
+    from . import background as bgmod
+    from . import bg_rules
+
+    analysis = bgmod.analyze(bgr, face, all_faces)
+    # The v4 background rules are superseded by the detailed ones.
+    kept = [f for f in verdict.findings
+            if f.rule not in ("background intrusion", "background clutter")]
+    verdict.findings = kept + bg_rules.evaluate(analysis, face)
+    verdict.background = analysis
+    verdict.score = int(round(max(0.0, 100.0 - sum(f.penalty for f in verdict.findings))))
+    order = {"major": 0, "minor": 1, "ok": 2}
+    verdict.findings.sort(key=lambda f: (order[f.severity], -f.penalty))
+    return verdict
