@@ -56,6 +56,8 @@ compares:
 
 from __future__ import annotations
 
+import hashlib
+
 import streamlit as st
 
 from shooti.loader import load_bgr
@@ -192,25 +194,53 @@ if len(faces) > 1:
 else:
     face = faces[0]
 
-with st.spinner("Measuring…"):
-    raw_verdict = analyze_portrait(bgr, face, all_faces=faces, deep_background=True)
-
 forced = None
 if style_override != "(let it choose)":
     forced = next(s for s in STYLES.values() if s.label == style_override)
 
-if forced is not None:
-    verdict = analyze_portrait(
-        bgr, face, all_faces=faces, deep_background=True, style=forced
-    )
-    adj = None
-else:
-    with st.spinner("Reviewing the critique…"):
-        verdict, adj = adjudicate(
-            bgr, face, faces, raw_verdict,
-            use_llm=review, provider=provider,
-            api_key=api_key or None, model=model or None, intent=intent or None,
-        )
+# Only recompute when something that actually affects the result changes.
+# Previously every rerun re-ran the model review, so toggling an overlay
+# checkbox fired a fresh LLM call and the page showed the PREVIOUS photo's
+# result while it ran — which looks exactly like a stale/refresh bug.
+photo_id = hashlib.sha1(frame_file.getvalue()).hexdigest()[:12]
+signature = (
+    photo_id,
+    id(face) if len(faces) == 1 else faces.index(face),
+    forced.key if forced else None,
+    bool(review), provider, model, intent or "",
+    hashlib.sha1((api_key or "").encode()).hexdigest()[:8],  # never store the key itself
+)
+
+if st.button("Re-analyse this photo", help="Force a fresh run, including a new model review."):
+    st.session_state.pop("v42_sig", None)
+
+if st.session_state.get("v42_sig") != signature:
+    if forced is not None:
+        with st.spinner("Measuring…"):
+            verdict, adj = analyze_portrait(
+                bgr, face, all_faces=faces, deep_background=True, style=forced
+            ), None
+    else:
+        with st.spinner("Measuring and reviewing…"):
+            raw_verdict = analyze_portrait(
+                bgr, face, all_faces=faces, deep_background=True
+            )
+            verdict, adj = adjudicate(
+                bgr, face, faces, raw_verdict,
+                use_llm=review, provider=provider,
+                api_key=api_key or None, model=model or None, intent=intent or None,
+            )
+    st.session_state["v42_sig"] = signature
+    st.session_state["v42_result"] = (verdict, adj)
+    st.session_state["v42_photo"] = getattr(frame_file, "name", photo_id)
+
+verdict, adj = st.session_state["v42_result"]
+
+# Provenance, so a stale result can never hide.
+st.caption(
+    f"Showing analysis of **{st.session_state.get('v42_photo', '?')}** "
+    f"(`{photo_id}`). Overlay toggles redraw without re-running the model."
+)
 
 if adj is not None:
     a, b, c = st.columns(3)

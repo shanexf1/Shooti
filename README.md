@@ -664,6 +664,42 @@ Without a key: style comes from keyword matching, no findings are reviewed, and
 the app says so. With a key (Claude or ChatGPT, same switch as v4): the model
 picks the style and reviews the findings.
 
+## Two fixes after use
+
+**The refresh bug was real, and it was the model call.** `adjudicate()` ran on
+every Streamlit rerun, so toggling an overlay checkbox fired a fresh LLM call —
+and while that ran, the page still showed the *previous* photo's result. With no
+key the fallback is instant, which is why it never showed up in testing; with a
+real key it looks exactly like "it isn't judging the new photo".
+
+Now the result is cached against a signature of (photo hash, chosen face, forced
+style, provider, model, intent, key fingerprint). Overlay toggles redraw without
+re-running anything; a new photo invalidates it. The app prints which photo the
+displayed analysis came from, plus its hash, so a stale result can no longer
+hide, and there is a **Re-analyse this photo** button to force a fresh run. The
+API key is hashed into the signature, never stored in it.
+
+Verified in a browser: upload → 73, toggle a checkbox → still 73 (no recompute),
+new photo → 36, back to the first → 73.
+
+**The model can now take scores down, not just up.** Previously it could dismiss
+findings (score up) and escalate them, but escalation floored the penalty at 12,
+which was a no-op on any rule already penalised above that — it reported APPLIED
+while moving the score by zero. And it had no way to report a problem the rules
+cannot measure at all.
+
+| Action | Effect | Cap |
+|---|---|---|
+| dismiss | removes a finding | 3 max, +25 points max |
+| escalate | penalty × 1.5 | 3 max, 26 per rule |
+| **add** | **a new finding the rules cannot measure** | **3 max, 14 (major) / 7 (minor)** |
+| | combined downward | −40 points max |
+
+`add` exists because the rules see geometry, sharpness and tone — they cannot see
+a closed eye, a forced smile, hair across the face, or a twisted collar. Tested
+by injection: three added problems took a headshot from 73 to 44, a fourth was
+blocked by the −40 cap, and an `add` with no real description was blocked.
+
 ## v4.2 limits
 
 - **The review path has never been executed.** No API key of either kind has been
